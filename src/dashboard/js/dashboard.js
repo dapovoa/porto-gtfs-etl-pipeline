@@ -7,15 +7,60 @@ class STCPDashboard {
         this.accentColor = '#4a90e2';
         this.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
         this.monoFontFamily = "'Inter', sans-serif";
+        this.markerClusterGroup = null;
+        this.theme = localStorage.getItem('theme') || 'light';
         this.init();
     }
 
     async init() {
+        this.initTheme();
         this.setupChartDefaults();
         this.initMap();
         await this.loadData();
         this.startAutoRefresh();
         this.handleResize();
+        this.setupThemeToggle();
+    }
+
+    initTheme() {
+        document.documentElement.setAttribute('data-theme', this.theme);
+        this.updateAccentColor();
+    }
+
+    updateAccentColor() {
+        this.accentColor = this.theme === 'dark' ? '#60a5fa' : '#4a90e2';
+    }
+
+    setupThemeToggle() {
+        const toggle = document.getElementById('theme-toggle');
+        const icon = toggle.querySelector('i');
+
+        icon.className = this.theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+
+        toggle.addEventListener('click', () => {
+            this.theme = this.theme === 'light' ? 'dark' : 'light';
+            localStorage.setItem('theme', this.theme);
+            document.documentElement.setAttribute('data-theme', this.theme);
+            icon.className = this.theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            this.updateAccentColor();
+            this.updateChartsTheme();
+        });
+    }
+
+    updateChartsTheme() {
+        Object.values(this.charts).forEach(chart => {
+            if (chart && chart.data && chart.data.datasets) {
+                chart.data.datasets.forEach(dataset => {
+                    if (dataset.backgroundColor === '#4a90e2' || dataset.backgroundColor === '#60a5fa') {
+                        dataset.backgroundColor = this.accentColor;
+                    }
+                    if (dataset.borderColor === '#4a90e2' || dataset.borderColor === '#60a5fa') {
+                        dataset.borderColor = this.accentColor;
+                    }
+                });
+                chart.update();
+            }
+        });
     }
 
     setupChartDefaults() {
@@ -145,32 +190,56 @@ class STCPDashboard {
     }
 
     updateMap(paragens) {
-        this.map.eachLayer(layer => {
-            if (layer instanceof L.CircleMarker) this.map.removeLayer(layer);
+        if (this.markerClusterGroup) {
+            this.map.removeLayer(this.markerClusterGroup);
+        }
+
+        this.markerClusterGroup = L.markerClusterGroup({
+            chunkedLoading: true,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true,
+            maxClusterRadius: 50
         });
 
         const radius = window.innerWidth >= 2560 ? 10 : 8;
-        
+
+        const zoneColors = {
+            'Centro': '#4a90e2',
+            'Norte': '#10b981',
+            'Sul': '#f59e0b',
+            'Este': '#8b5cf6',
+            'Oeste': '#ef4444',
+            'default': '#6b7280'
+        };
+
         paragens.forEach(paragem => {
             if (paragem.stop_lat && paragem.stop_lon) {
-                L.circleMarker([paragem.stop_lat, paragem.stop_lon], {
+                const zone = paragem.area_geografica || 'default';
+                const color = zoneColors[zone] || zoneColors['default'];
+
+                const marker = L.circleMarker([paragem.stop_lat, paragem.stop_lon], {
                     radius: radius,
-                    fillColor: this.accentColor,
+                    fillColor: color,
                     color: '#ffffff',
                     weight: 1.5,
                     opacity: 1,
                     fillOpacity: 0.8
-                }).addTo(this.map).bindPopup(`
-                    <div style="font-family: ${this.fontFamily}; color: #1e293b;">
-                        <h4 style="margin: 0 0 8px 0; color: ${this.accentColor}; font-family: ${this.fontFamily}; font-weight: 600;">${paragem.stop_name}</h4>
-                        <p style="margin: 0; color: #64748b; font-size: 0.875rem;">
+                }).bindPopup(`
+                    <div style="font-family: ${this.fontFamily};">
+                        <h4 style="margin: 0 0 8px 0; color: ${color}; font-family: ${this.fontFamily}; font-weight: 600;">${paragem.stop_name}</h4>
+                        <p style="margin: 0; font-size: 0.875rem;">
                             <strong>ID:</strong> ${paragem.stop_id}<br>
                             <strong>ZONE:</strong> ${paragem.area_geografica || 'N/A'}
                         </p>
                     </div>
                 `);
+
+                this.markerClusterGroup.addLayer(marker);
             }
         });
+
+        this.map.addLayer(this.markerClusterGroup);
     }
 
     updateRoutes(linhas) {
@@ -196,15 +265,24 @@ class STCPDashboard {
         const container = document.getElementById('top-stops');
         container.innerHTML = '';
         const maxItems = window.innerHeight > 1080 ? 10 : 6;
-        
+
+        const maxSchedules = Math.max(...stops.slice(0, maxItems).map(s => s.total_horarios || 0));
+
         stops.slice(0, maxItems).forEach((stop, index) => {
             const item = document.createElement('div');
             item.className = 'stop-item';
+            const schedules = stop.total_horarios || 0;
+            const percentage = (schedules / maxSchedules) * 100;
+            const badge = index < 3 ? `<span class="top-badge" style="background: ${index === 0 ? '#fbbf24' : index === 1 ? '#cbd5e1' : '#fb923c'};">TOP ${index + 1}</span>` : '';
+
             item.innerHTML = `
                 <div class="stop-rank">${index + 1}</div>
                 <div class="stop-info">
-                    <div class="stop-name">${stop.stop_name}</div>
-                    <div class="stop-count">${stop.total_horarios?.toLocaleString() || 0} SCHEDULES</div>
+                    <div class="stop-name">${stop.stop_name} ${badge}</div>
+                    <div class="stop-count">
+                        ${schedules.toLocaleString()} SCHEDULES
+                        <div class="activity-bar" style="width: ${percentage}%; background: ${this.accentColor};"></div>
+                    </div>
                 </div>`;
             container.appendChild(item);
         });
@@ -214,16 +292,25 @@ class STCPDashboard {
         const container = document.getElementById('hubs-list');
         container.innerHTML = '';
         const maxItems = window.innerHeight > 1080 ? 10 : 6;
-        
+
+        const maxRoutes = Math.max(...hubs.slice(0, maxItems).map(h => h.total_linhas || 0));
+
         hubs.slice(0, maxItems).forEach((hub, index) => {
             const item = document.createElement('div');
             item.className = 'hub-item';
+            const routes = hub.total_linhas || 0;
+            const percentage = (routes / maxRoutes) * 100;
+            const busyBadge = routes > maxRoutes * 0.7 ? '<span class="busy-badge">BUSY</span>' : '';
+
             item.innerHTML = `
                 <div class="hub-rank">${index + 1}</div>
                 <div class="hub-info">
-                    <div class="hub-name">${hub.stop_name}</div>
-                    <div class="hub-details">${hub.total_linhas} ROUTES • ${hub.total_viagens} TRIPS</div>
-                    <div class="hub-lines">${hub.linhas ? hub.linhas.join(', ') : ''}</div>
+                    <div class="hub-name">${hub.stop_name} ${busyBadge}</div>
+                    <div class="hub-details">
+                        ${routes} ROUTES • ${hub.total_viagens} TRIPS
+                        <div class="activity-bar" style="width: ${percentage}%; background: ${this.accentColor};"></div>
+                    </div>
+                    <div class="hub-lines">${hub.linhas ? hub.linhas.slice(0, 8).join(', ') : ''}${hub.linhas && hub.linhas.length > 8 ? '...' : ''}</div>
                 </div>`;
             container.appendChild(item);
         });
@@ -288,28 +375,59 @@ class STCPDashboard {
     }
 
     updateDistanceChart(data) {
-        const maxItems = window.innerWidth > 2560 ? 15 : 10;
+        const maxItems = window.innerWidth > 2560 ? 12 : 8;
         const topItems = data.slice(0, maxItems);
-        
+
         this.createOrUpdateChart('distance-chart', 'bar', {
             labels: topItems.map(item => item.route_short_name),
             datasets: [{
                 label: 'Distance (km)',
                 data: topItems.map(item => item.km_total),
                 backgroundColor: this.accentColor,
+                borderRadius: 6,
+                barPercentage: 0.7,
+                categoryPercentage: 0.8
             }]
         }, {
-            responsive: true, 
+            responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: { 
-                y: { 
-                    beginAtZero: true, 
-                    grid: { color: '#f1f5f9' }
-                }, 
-                x: { 
-                    grid: { color: '#f1f5f9' }
-                } 
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: { size: 14, weight: '600' },
+                    bodyFont: { size: 12 },
+                    callbacks: {
+                        label: (context) => `Distance: ${context.parsed.y.toFixed(2)} km`
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: '#f1f5f9', drawBorder: false },
+                    ticks: {
+                        callback: (value) => value + ' km',
+                        padding: 8
+                    }
+                },
+                x: {
+                    grid: { display: false, drawBorder: false },
+                    ticks: {
+                        padding: 8,
+                        maxRotation: 0,
+                        minRotation: 0
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    left: 10,
+                    right: 10,
+                    top: 10,
+                    bottom: 10
+                }
             }
         });
     }
@@ -352,16 +470,26 @@ class STCPDashboard {
 
     updateStatus(status) {
         const lastUpdate = document.getElementById('last-update');
+        const kpiValues = document.querySelectorAll('.kpi-value');
+
         switch (status) {
             case 'loading':
                 lastUpdate.textContent = '--';
+                kpiValues.forEach(el => {
+                    if (el.id !== 'last-update') {
+                        el.classList.add('skeleton');
+                        el.textContent = '';
+                    }
+                });
                 break;
             case 'success':
                 const now = new Date();
                 lastUpdate.textContent = now.toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                kpiValues.forEach(el => el.classList.remove('skeleton'));
                 break;
             case 'error':
                 lastUpdate.textContent = 'ERROR';
+                kpiValues.forEach(el => el.classList.remove('skeleton'));
                 break;
         }
     }
