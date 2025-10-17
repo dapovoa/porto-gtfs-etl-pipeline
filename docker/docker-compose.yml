@@ -1,0 +1,86 @@
+services:
+  db:
+    image: postgres:16
+    container_name: stcp-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - stcp_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  etl:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: stcp-etl
+    command: ["/app/start.sh", "etl"]
+    environment:
+      DB_HOST: stcp-postgres
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_PORT: 5432
+      DATA_BASE_PATH: /app/data
+      ZIP_FILE_NAME: gtfs_data.zip
+    volumes:
+      - etl_data:/app/data
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - stcp_network
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: stcp-api
+    command: ["/app/start.sh", "api"]
+    environment:
+      DB_HOST: stcp-postgres
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_PORT: 5432
+      DATA_BASE_PATH: /app/data
+      ZIP_FILE_NAME: gtfs_data.zip
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - stcp_network
+
+  nginx:
+    image: nginx:alpine
+    container_name: stcp-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ../src/dashboard:/usr/share/nginx/html
+    depends_on:
+      - api
+    networks:
+      - stcp_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  etl_data:
+
+networks:
+  stcp_network:
+    driver: bridge
