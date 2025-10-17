@@ -117,8 +117,8 @@ body {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     gap: 1vw;
-    height: 8vh;
-    min-height: 60px;
+    height: 6vh;
+    min-height: 50px;
     flex-shrink: 0;
     padding: 0;
 }
@@ -204,7 +204,7 @@ body {
 
 .dashboard-grid {
     display: grid;
-    grid-template-columns: 6fr 4fr;
+    grid-template-columns: 3fr 2fr;
     gap: 1vw;
     flex: 1;
     min-height: 0;
@@ -236,25 +236,35 @@ body {
 }
 
 .widgets-container {
-    display: grid;
-    grid-template-rows: 1fr 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 1vw;
     min-width: 0;
     min-height: 0;
 }
 
 .charts-group {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
     gap: 1vw;
     min-height: 0;
+    flex: 1;
+}
+
+.charts-group .widget {
+    flex: 1;
+    min-width: 0;
 }
 
 .lists-group {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
     gap: 1vw;
     min-height: 0;
+    flex: 1;
+}
+
+.lists-group .widget {
+    flex: 1;
+    min-width: 0;
 }
 
 .widget {
@@ -504,29 +514,57 @@ body {
 
 @media (max-width: 1920px) {
     .kpi-section {
-        height: 9vh;
-        min-height: 70px;
+        height: 7vh;
+        min-height: 55px;
+    }
+
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: 2fr 1fr;
+    }
+
+    .widgets-container {
+        flex-direction: row;
+    }
+
+    .charts-group, .lists-group {
+        flex-direction: column;
+    }
+}
+
+@media (min-width: 1921px) and (max-width: 2559px) {
+    .kpi-section {
+        height: 6vh;
+        min-height: 50px;
     }
 }
 
 @media (min-width: 2560px) {
     .kpi-section {
-        height: 7vh;
-        min-height: 80px;
+        height: 5.5vh;
+        min-height: 60px;
     }
-    
+
     .kpi-value {
         font-size: clamp(1.5rem, 1.8vw, 2.5rem);
+    }
+
+    .dashboard-grid {
+        grid-template-columns: 3.5fr 2fr;
     }
 }
 
 @media (min-width: 3840px) {
     .kpi-section {
-        height: 6vh;
-        min-height: 90px;
+        height: 5vh;
+        min-height: 70px;
     }
-    
+
     .kpi-value {
         font-size: clamp(2rem, 1.5vw, 3rem);
+    }
+
+    .dashboard-grid {
+        grid-template-columns: 4fr 2fr;
     }
 }
