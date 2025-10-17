@@ -184,13 +184,14 @@ body {
 
 .kpi-value {
     font-family: 'Inter', sans-serif;
-    font-size: clamp(1.2rem, 2vw, 2rem);
+    font-size: clamp(0.9rem, 1.5vw, 2rem);
     font-weight: 700;
     background: var(--gradient);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
     line-height: 1;
+    word-break: break-all;
 }
 
 .kpi-label {
@@ -520,15 +521,21 @@ body {
 
     .dashboard-grid {
         grid-template-columns: 1fr;
-        grid-template-rows: 2fr 1fr;
+        grid-template-rows: 1.5fr 1fr;
     }
 
     .widgets-container {
         flex-direction: row;
+        min-height: 40vh;
     }
 
     .charts-group, .lists-group {
         flex-direction: column;
+        flex: 1;
+    }
+
+    .charts-group .widget, .lists-group .widget {
+        min-height: 200px;
     }
 }
 

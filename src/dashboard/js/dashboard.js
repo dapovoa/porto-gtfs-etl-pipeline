@@ -183,10 +183,20 @@ class STCPDashboard {
     }
 
     updateKPIs(data) {
-        document.getElementById('total-paragens').textContent = data.total_paragens?.toLocaleString() || '--';
-        document.getElementById('total-linhas').textContent = data.total_linhas?.toLocaleString() || '--';
-        document.getElementById('total-horarios').textContent = data.total_horarios?.toLocaleString() || '--';
-        document.getElementById('cobertura').textContent = data.cobertura || '--';
+        const totalParagens = document.getElementById('total-paragens');
+        const totalLinhas = document.getElementById('total-linhas');
+        const totalHorarios = document.getElementById('total-horarios');
+        const cobertura = document.getElementById('cobertura');
+
+        totalParagens.textContent = data.total_paragens?.toLocaleString() || '--';
+        totalLinhas.textContent = data.total_linhas?.toLocaleString() || '--';
+        totalHorarios.textContent = data.total_horarios?.toLocaleString() || '--';
+        cobertura.textContent = data.cobertura || '--';
+
+        // Remove skeleton after updating
+        [totalParagens, totalLinhas, totalHorarios, cobertura].forEach(el => {
+            el.classList.remove('skeleton');
+        });
     }
 
     updateMap(paragens) {
@@ -470,26 +480,51 @@ class STCPDashboard {
 
     updateStatus(status) {
         const lastUpdate = document.getElementById('last-update');
-        const kpiValues = document.querySelectorAll('.kpi-value');
+        const totalParagens = document.getElementById('total-paragens');
+        const totalLinhas = document.getElementById('total-linhas');
+        const totalHorarios = document.getElementById('total-horarios');
+        const cobertura = document.getElementById('cobertura');
 
         switch (status) {
             case 'loading':
-                lastUpdate.textContent = '--';
-                kpiValues.forEach(el => {
-                    if (el.id !== 'last-update') {
-                        el.classList.add('skeleton');
-                        el.textContent = '';
-                    }
+                // Show skeleton on all KPIs during loading
+                [totalParagens, totalLinhas, totalHorarios, cobertura].forEach(el => {
+                    el.classList.add('skeleton');
+                    el.textContent = '';
                 });
+                lastUpdate.textContent = '--';
                 break;
             case 'success':
                 const now = new Date();
-                lastUpdate.textContent = now.toLocaleString('pt-PT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                kpiValues.forEach(el => el.classList.remove('skeleton'));
+                const isMobile = window.innerWidth < 1920;
+
+                if (isMobile) {
+                    // Formato compacto: 17/10 16:38
+                    lastUpdate.textContent = now.toLocaleString('pt-PT', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                } else {
+                    // Formato completo: 17/10/2025 16:38:54
+                    lastUpdate.textContent = now.toLocaleString('pt-PT', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                }
                 break;
             case 'error':
-                lastUpdate.textContent = 'ERROR';
-                kpiValues.forEach(el => el.classList.remove('skeleton'));
+                // Show -- on all KPIs on error
+                [totalParagens, totalLinhas, totalHorarios, cobertura].forEach(el => {
+                    el.classList.remove('skeleton');
+                    el.textContent = '--';
+                });
+                lastUpdate.textContent = '--';
                 break;
         }
     }
