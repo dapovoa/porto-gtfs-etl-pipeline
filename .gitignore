@@ -39,6 +39,7 @@ data/
 *.zip
 *.csv
 *.txt
+!requirements.txt
 
 # IDE
 .vscode/

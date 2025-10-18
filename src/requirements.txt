@@ -1,0 +1,10 @@
+uvicorn
+fastapi
+sqlalchemy
+requests
+beautifulsoup4
+lxml
+prefect
+psycopg2-binary
+pandas
+geoalchemy2
