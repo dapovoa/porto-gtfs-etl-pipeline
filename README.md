@@ -46,7 +46,7 @@ When it's done, you can access the application at `http://localhost`. The API do
 
 The project was designed to be flexible when it comes to deployment:
 
-*   **[Docker](deploy/docker/README.md):** The recommended option for development and testing. A single command and it's up and running.
+*   **[Docker](deploy/docker/README.md):** The recommended option for development and testing.
 *   **[Bare Metal](deploy/bare-metal/README.md):** For those who prefer a manual installation on a Linux server, with full control.
 *   **[AWS Lightsail](deploy/aws-lightsail/README.md):** A production-ready cloud deployment, automated with Terraform and Ansible.
 
