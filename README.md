@@ -1,377 +1,79 @@
-# STCP GTFS ETL Pipeline
+# GTFS ETL Pipeline
 
 ![Dashboard Screenshot](img/screenshot.png)
 
-## About this Project
+This project is a way to fetch public transport data from Porto (STCP), clean it up, and serve it in a useful and visual way. Every day, it downloads schedules, stops, and routes, processes everything, and feeds a fresh dashboard and API.
 
-This is an automated system that collects, processes and presents public transport information from STCP (Sociedade de Transportes Coletivos do Porto) in a database and web dashboard. The system downloads daily official schedule and route data from STCP, processes and organizes this data in a PostgreSQL database, and creates a web panel with public transport statistics and maps.
+Currently, the system tracks **2,502 stops**, **73 routes**, and **901,089 schedules**.
 
-Key capabilities include monitoring transport operations (2,502 stops, 73 routes, 901,089 schedules), visualizing routes on Porto's map, analyzing service frequencies and zone distribution, and identifying main stops and transport connections. The system runs automatically daily and is accessible via web dashboard.
+## How It Works
 
-## Features
+The process is a classic data pipeline (ETL), orchestrated to run automatically:
 
-- Automated GTFS data download and processing
-- Real-time dashboard with transport metrics
-- Interactive map visualization
-- Route and stop analysis
-- Service frequency monitoring
-- Containerized deployment with Docker support
+1.  **Extract:** Every day, the system fetches the latest data in GTFS format from the [Porto Open Data Portal](https://opendata.porto.digital/).
+2.  **Transform:** The raw data is processed and organized. We create a database that separates the original data (`raw`) from the processed data ready for analysis (`analytics`). It's at this stage that we calculate metrics like the busiest stops or the main transfer hubs.
+3.  **Load (and Expose):** The transformed data is made available in two ways:
+    *   A **REST API**, so that any other application can consume this data.
+    *   A **Web Dashboard**, which uses the API to display the information graphically and intuitively.
 
-## Installation
+## The Toolbox
 
-# SETUP STCP - Prefect Stack
+To build this, we used a set of well-known technologies:
 
-## Prerequisites
+*   **Core Language:** Python 3.x
+*   **Pipeline Orchestration:** Prefect
+*   **Database:** PostgreSQL 16
+*   **API:** FastAPI
+*   **Data Manipulation:** Pandas
+*   **Web Server:** Nginx
+*   **Containerization:** Docker Compose
 
-**PostgreSQL Driver for Windows Power BI:**  
-https://www.postgresql.org/ftp/odbc/releases/
+## Quick Start
 
-## DB-SERVER Setup
-
-### 1. Linux Hardening
-
-```bash
-sudo visudo
-```
-Add: `Defaults timestamp_timeout=-1`
+The easiest way to get this running is with Docker.
 
 ```bash
-sudo apt update -y && sudo apt upgrade -y
-sudo ufw allow openssh && sudo ufw --force enable
+git clone https://github.com/dapovoa/github/gtfs-etl-pipeline
+cd gtfs-etl-pipeline
+./deploy/docker/deploy.sh
 ```
 
-### 2. SSH Configuration
+The script takes care of everything: it starts the services and runs the initial pipeline. The first time, it might take a few minutes.
 
-```bash
-sudo nano /etc/ssh/sshd_config
+When it's done, you can access the application at `http://localhost`. The API documentation is available at `http://localhost/api/docs`.
+
+## Deployment Options
+
+The project was designed to be flexible when it comes to deployment:
+
+*   **[Docker](deploy/docker/README.md):** The recommended option for development and testing. A single command and it's up and running.
+*   **[Bare Metal](deploy/bare-metal/README.md):** For those who prefer a manual installation on a Linux server, with full control.
+*   **[AWS Lightsail](deploy/aws-lightsail/README.md):** A production-ready cloud deployment, automated with Terraform and Ansible.
+
+## Project Structure
+
+The file organization follows a logic of separation of concerns:
+
 ```
-Set: `PasswordAuthentication no`
-
-```bash
-sudo systemctl restart ssh
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp
-sudo ufw --force enable
-sudo apt install -y fail2ban
-```
-
-### 3. PostgreSQL Installation
-
-```bash
-sudo apt install curl ca-certificates
-sudo install -d /usr/share/postgresql-common/pgdg
-sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
-```
-
-```bash
-. /etc/os-release
-sudo sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main' > /etc/apt/sources.list.d/pgdg.list"
-```
-
-```bash
-sudo apt update -y && sudo apt install -y postgresql-16
-```
-
-### 4. PostgreSQL Configuration
-
-```bash
-sudo nano /etc/postgresql/16/main/postgresql.conf
-```
-Configure:
-```
-listen_addresses = '<your-db-server-ip>, localhost'
-ssl = on
+gtfs-etl-pipeline/
+  src/                # The application's source code
+    main_pipeline.py  # The main ETL orchestrator
+    api_server.py     # The API server
+    pipelines/        # Scripts to process each GTFS file
+    sql/              # Scripts to create tables and views in the DB
+    dashboard/        # The web dashboard files
+  deploy/             # Deployment scripts and configurations
+    docker/
+    bare-metal/
+    aws-lightsail/
+  nginx/              # Nginx configurations
+  README.md
 ```
 
-### 5. Remote Access Configuration
+## Data Source
 
-```bash
-sudo nano /etc/postgresql/16/main/pg_hba.conf
-```
-Add: `host all all <your-network-subnet>/24 scram-sha-256`
+The data is obtained in GTFS format. For more details on the specification, you can consult the [official GTFS website](https://gtfs.org/schedule/).
 
-### 6. Start PostgreSQL Service
+## License
 
-```bash
-sudo systemctl start postgresql@16-main
-sudo systemctl enable postgresql@16-main
-sudo systemctl restart postgresql
-```
-
-### 7. Database Setup
-
-```bash
-sudo -u postgres psql
-```
-
-**Create database and user:**
-```sql
-CREATE USER etl_user WITH PASSWORD '<your-secure-password>';
-CREATE DATABASE stcp_warehouse;
-GRANT ALL PRIVILEGES ON DATABASE stcp_warehouse TO etl_user;
-
-\c stcp_warehouse
-
-CREATE SCHEMA raw;
-CREATE SCHEMA staging;
-CREATE SCHEMA analytics;
-
-GRANT ALL ON SCHEMA raw TO etl_user;
-GRANT ALL ON SCHEMA staging TO etl_user;
-GRANT ALL ON SCHEMA analytics TO etl_user;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA raw GRANT ALL ON TABLES TO etl_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA raw GRANT ALL ON SEQUENCES TO etl_user;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA staging GRANT ALL ON TABLES TO etl_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA staging GRANT ALL ON SEQUENCES TO etl_user;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA analytics GRANT ALL ON TABLES TO etl_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA analytics GRANT ALL ON SEQUENCES TO etl_user;
-
-\q
-```
-
-## ETL-SERVER Setup
-
-### 1. Linux Hardening
-
-```bash
-sudo visudo
-```
-Add: `Defaults timestamp_timeout=-1`
-
-```bash
-sudo apt update -y && sudo apt upgrade -y
-sudo ufw allow openssh && sudo ufw --force enable
-```
-
-### 2. SSH Configuration
-
-```bash
-sudo nano /etc/ssh/sshd_config
-```
-Set: `PasswordAuthentication no`
-
-```bash
-sudo systemctl restart ssh
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp
-sudo ufw --force enable
-```
-
-### 3. Install Dependencies
-
-```bash
-sudo apt update && sudo apt install -y python3-venv python3-pip postgresql-client-16
-```
-
-### 4. Python Environment Setup
-
-```bash
-python3 -m venv ~/prefect-env
-source ~/prefect-env/bin/activate
-pip install --upgrade pip
-```
-
-### 5. Project Setup
-
-```bash
-git clone <your-repository-url> ~/src
-cd ~/src
-pip install -r requirements.txt
-```
-
-### 6. Environment Configuration
-
-Set the required environment variables as documented in the main README.md file before running the application.
-
-### 7. Systemd Services
-
-**Prefect Server Service:**
-```bash
-sudo nano /etc/systemd/system/prefect-server.service
-```
-
-```ini
-[Unit]
-Description=Prefect Server
-After=network.target
-
-[Service]
-Type=simple
-User=<your-username>
-Group=<your-username>
-WorkingDirectory=/home/<your-username>/src
-Environment=PATH=/home/<your-username>/prefect-env/bin
-Environment=DB_USER=etl_user
-Environment=DB_PASSWORD=<your-db-password>
-Environment=DB_HOST=<your-db-host>
-Environment=DB_NAME=stcp_warehouse
-ExecStart=/home/<your-username>/prefect-env/bin/prefect server start --host <your-etl-server-ip> --port 4200
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**STCP API Service:**
-```bash
-sudo nano /etc/systemd/system/stcp-api.service
-```
-
-```ini
-[Unit]
-Description=STCP API Server
-After=network.target
-
-[Service]
-Type=simple
-User=<your-username>
-Group=<your-username>
-WorkingDirectory=/home/<your-username>/src
-Environment=PATH=/home/<your-username>/prefect-env/bin
-Environment=DB_USER=etl_user
-Environment=DB_PASSWORD=<your-db-password>
-Environment=DB_HOST=<your-db-host>
-Environment=DB_NAME=stcp_warehouse
-ExecStart=/home/<your-username>/prefect-env/bin/uvicorn api_server:app --host 127.0.0.1 --port 8000
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### 8. Enable and Start Services
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable prefect-server.service
-sudo systemctl enable stcp-api.service
-sudo systemctl start prefect-server.service
-sudo systemctl start stcp-api.service
-```
-
-### 9. Verify Services
-
-```bash
-sudo systemctl status prefect-server.service
-sudo systemctl status stcp-api.service
-```
-
-### 10. Initial Pipeline Test
-
-```bash
-cd ~/src
-python main_pipeline.py
-```
-
-## Nginx Web Server Setup
-
-### 1. Install Nginx
-
-```bash
-sudo apt update && sudo apt install -y nginx
-```
-
-### 2. Create Dashboard Configuration
-
-```bash
-sudo nano /etc/nginx/sites-available/stcp-dashboard
-```
-
-```nginx
-server {
-    listen 80;
-    server_name <your-server-domain-or-ip>;
-
-    root /var/www/html/stcp-dashboard;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ =404;
-    }
-
-    location /api {
-        proxy_pass http://127.0.0.1:8000/api;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-### 3. Enable Configuration
-
-```bash
-sudo ln -s /etc/nginx/sites-available/stcp-dashboard /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl restart nginx
-sudo ufw allow 'Nginx Full'
-```
-
-### 4. Deploy Dashboard
-
-```bash
-sudo cp -r ~/src/dashboard /var/www/html/stcp-dashboard
-sudo chown -R www-data:www-data /var/www/html/stcp-dashboard
-sudo nginx -t
-sudo systemctl restart nginx
-```
-
-## Automation Setup
-
-### 1. Configure Automatic Updates
-
-```bash
-chmod +x ~/src/check_and_update.py
-```
-
-### 2. Setup Cron Job
-
-```bash
-EDITOR=nano crontab -e
-```
-
-Add daily execution at 06:00:
-```cron
-0 6 * * * cd ~/src && source ~/prefect-env/bin/activate && DB_USER=etl_user DB_PASSWORD=<your-db-password> DB_HOST=<your-db-host> DB_NAME=stcp_warehouse python check_and_update.py >> /var/log/stcp-update.log 2>&1
-```
-
-### 3. Initial Test
-
-```bash
-cd ~/src
-python check_and_update.py
-```
-
-## Docker Deployment
-
-For containerized deployment with Docker, see [docker/README.md](docker/README.md).
-
-## Configuration
-
-The application uses environment variables for configuration:
-
-### Environment Variables:
-- `DB_PASSWORD`: Database password (default: `DbServer123`, **should be changed for production**)
-
-### Optional Variables (with defaults):
-- `DB_USER`: Database username (default: `etl_user`)
-- `DB_HOST`: Database hostname/IP (default: `127.0.0.1`)
-- `DB_PORT`: Database port (default: `5432`)
-- `DB_NAME`: Database name (default: `stcp_warehouse`)
-- `DATA_BASE_PATH`: Directory for storing GTFS data files (default: `data`)
-- `ZIP_FILE_NAME`: Name for the GTFS zip file (default: `gtfs_data.zip`)
-
-### Security Best Practices:
-- Never commit passwords to version control
-- Use strong, unique passwords for production
-- See [SECURITY.md](SECURITY.md) for complete security guidelines
-
-This is a reference implementation - fork and adapt as needed.
+This project is under the MIT License. See the [LICENSE](LICENSE) file for details.

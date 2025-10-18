@@ -1,0 +1,23 @@
+[Unit]
+Description=GTFS API Server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/gtfs-app/src
+Environment=PATH=/home/ubuntu/prefect-env/bin
+Environment=DB_USER={{ db_app_user }}
+Environment=DB_PASSWORD={{ db_app_password }}
+Environment=DB_HOST={{ groups['db_server'][0] }}
+Environment=DB_PORT=5432
+Environment=DB_NAME={{ db_app_database }}
+Environment=DATA_BASE_PATH=/home/ubuntu/gtfs-app/data
+Environment=ZIP_FILE_NAME=gtfs_data.zip
+ExecStart=/home/ubuntu/prefect-env/bin/uvicorn api_server:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

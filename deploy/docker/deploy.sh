@@ -35,24 +35,24 @@ echo "  DB_NAME: $DB_NAME"
 echo "  DB_PASSWORD: ${DB_PASSWORD:0:3}*** (${#DB_PASSWORD} chars)"
 echo ""
 
-# Navigate to the project directory
+# Navigate to the project root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/.."
+cd "$SCRIPT_DIR/../.."
 
 echo "Building and starting all services..."
-DB_USER=$DB_USER DB_NAME=$DB_NAME DB_PASSWORD=$DB_PASSWORD $COMPOSE_CMD -f docker/docker-compose.yml up -d --build
+DB_USER=$DB_USER DB_NAME=$DB_NAME DB_PASSWORD=$DB_PASSWORD $COMPOSE_CMD -f deploy/docker/docker-compose.yml up -d --build
 
 echo "Waiting for services to be ready (this may take 1-2 minutes)..."
 sleep 60
 
 echo "Running initial ETL process to load data..."
-DB_USER=$DB_USER DB_NAME=$DB_NAME DB_PASSWORD=$DB_PASSWORD $COMPOSE_CMD -f docker/docker-compose.yml run --rm etl
+DB_USER=$DB_USER DB_NAME=$DB_NAME DB_PASSWORD=$DB_PASSWORD $COMPOSE_CMD -f deploy/docker/docker-compose.yml run --rm etl
 
 echo "STCP GTFS ETL Pipeline deployment completed successfully!"
 echo ""
 echo "Dashboard is available at: http://localhost"
 echo "API Documentation: http://localhost/api/docs"
 echo ""
-echo "Useful commands:"
-echo "  View logs: DB_USER=$DB_USER DB_NAME=$DB_NAME DB_PASSWORD=$DB_PASSWORD $COMPOSE_CMD -f docker/docker-compose.yml logs -f"
-echo "  Stop services: DB_USER=$DB_USER DB_NAME=$DB_NAME DB_PASSWORD=$DB_PASSWORD $COMPOSE_CMD -f docker/docker-compose.yml down"
+echo "Useful commands (run from project root):"
+echo "  View logs: DB_USER=$DB_USER DB_NAME=$DB_NAME DB_PASSWORD=$DB_PASSWORD $COMPOSE_CMD -f deploy/docker/docker-compose.yml logs -f"
+echo "  Stop services: DB_USER=$DB_USER DB_NAME=$DB_NAME DB_PASSWORD=$DB_PASSWORD $COMPOSE_CMD -f deploy/docker/docker-compose.yml down"

@@ -1,0 +1,342 @@
+---
+- name: Configure Database Server
+  hosts: db_server
+  become: true
+  vars_files:
+    - secrets.yml
+  tasks:
+    - name: Wait for cloud-init to complete
+      wait_for:
+        path: /var/lib/cloud/instance/boot-finished
+        timeout: 300
+
+    - name: Update APT cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+
+    - name: Install PostgreSQL dependencies
+      apt:
+        name: ['curl', 'ca-certificates', 'gnupg']
+        state: present
+
+    - name: Create PostgreSQL GPG directory
+      file:
+        path: /usr/share/postgresql-common/pgdg
+        state: directory
+        mode: '0755'
+
+    - name: Download PostgreSQL GPG key
+      get_url:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        dest: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+        mode: '0644'
+
+    - name: Add PostgreSQL APT repository
+      shell: |
+        . /etc/os-release
+        echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $VERSION_CODENAME-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+      args:
+        creates: /etc/apt/sources.list.d/pgdg.list
+
+    - name: Update APT cache after adding PostgreSQL repo
+      apt:
+        update_cache: yes
+
+    - name: Install PostgreSQL 16
+      apt:
+        name: postgresql-16
+        state: present
+
+    - name: Ensure PostgreSQL is started and enabled
+      systemd:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Configure PostgreSQL to listen on private IP
+      lineinfile:
+        path: /etc/postgresql/16/main/postgresql.conf
+        regexp: '^#?listen_addresses'
+        line: "listen_addresses = '{{ ansible_default_ipv4.address }}, localhost'"
+        backup: yes
+      notify: Restart PostgreSQL
+
+    - name: Enable SSL in PostgreSQL
+      lineinfile:
+        path: /etc/postgresql/16/main/postgresql.conf
+        regexp: '^#?ssl '
+        line: 'ssl = on'
+        backup: yes
+      notify: Restart PostgreSQL
+
+    - name: Create database user
+      shell: |
+        sudo -u postgres psql -tc "SELECT 1 FROM pg_user WHERE usename = '{{ db_app_user }}'" | grep -q 1 || \
+        sudo -u postgres psql -c "CREATE USER {{ db_app_user }} WITH PASSWORD '{{ db_app_password }}';"
+      register: create_user
+      changed_when: "'CREATE ROLE' in create_user.stdout"
+
+    - name: Create application database
+      shell: |
+        sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = '{{ db_app_database }}'" | grep -q 1 || \
+        sudo -u postgres psql -c "CREATE DATABASE {{ db_app_database }} OWNER {{ db_app_user }};"
+      register: create_db
+      changed_when: "'CREATE DATABASE' in create_db.stdout"
+
+    - name: Create raw schema
+      shell: |
+        sudo -u postgres psql -d {{ db_app_database }} -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'raw'" | grep -q 1 || \
+        sudo -u postgres psql -d {{ db_app_database }} -c "CREATE SCHEMA raw;"
+      register: create_raw_schema
+      changed_when: "'CREATE SCHEMA' in create_raw_schema.stdout"
+
+    - name: Create staging schema
+      shell: |
+        sudo -u postgres psql -d {{ db_app_database }} -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'staging'" | grep -q 1 || \
+        sudo -u postgres psql -d {{ db_app_database }} -c "CREATE SCHEMA staging;"
+      register: create_staging_schema
+      changed_when: "'CREATE SCHEMA' in create_staging_schema.stdout"
+
+    - name: Create analytics schema
+      shell: |
+        sudo -u postgres psql -d {{ db_app_database }} -tc "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'analytics'" | grep -q 1 || \
+        sudo -u postgres psql -d {{ db_app_database }} -c "CREATE SCHEMA analytics;"
+      register: create_analytics_schema
+      changed_when: "'CREATE SCHEMA' in create_analytics_schema.stdout"
+
+    - name: Grant schema privileges - raw
+      shell: |
+        sudo -u postgres psql -d {{ db_app_database }} -c "GRANT ALL ON SCHEMA raw TO {{ db_app_user }};"
+        sudo -u postgres psql -d {{ db_app_database }} -c "ALTER DEFAULT PRIVILEGES IN SCHEMA raw GRANT ALL ON TABLES TO {{ db_app_user }};"
+        sudo -u postgres psql -d {{ db_app_database }} -c "ALTER DEFAULT PRIVILEGES IN SCHEMA raw GRANT ALL ON SEQUENCES TO {{ db_app_user }};"
+      changed_when: false
+
+    - name: Grant schema privileges - staging
+      shell: |
+        sudo -u postgres psql -d {{ db_app_database }} -c "GRANT ALL ON SCHEMA staging TO {{ db_app_user }};"
+        sudo -u postgres psql -d {{ db_app_database }} -c "ALTER DEFAULT PRIVILEGES IN SCHEMA staging GRANT ALL ON TABLES TO {{ db_app_user }};"
+        sudo -u postgres psql -d {{ db_app_database }} -c "ALTER DEFAULT PRIVILEGES IN SCHEMA staging GRANT ALL ON SEQUENCES TO {{ db_app_user }};"
+      changed_when: false
+
+    - name: Grant schema privileges - analytics
+      shell: |
+        sudo -u postgres psql -d {{ db_app_database }} -c "GRANT ALL ON SCHEMA analytics TO {{ db_app_user }};"
+        sudo -u postgres psql -d {{ db_app_database }} -c "ALTER DEFAULT PRIVILEGES IN SCHEMA analytics GRANT ALL ON TABLES TO {{ db_app_user }};"
+        sudo -u postgres psql -d {{ db_app_database }} -c "ALTER DEFAULT PRIVILEGES IN SCHEMA analytics GRANT ALL ON SEQUENCES TO {{ db_app_user }};"
+      changed_when: false
+
+    - name: Configure pg_hba.conf to allow ETL server connection
+      lineinfile:
+        path: /etc/postgresql/16/main/pg_hba.conf
+        line: "host {{ db_app_database }} {{ db_app_user }} {{ groups['etl_server'][0] }}/32 scram-sha-256"
+        backup: yes
+      notify: Restart PostgreSQL
+
+    - name: Configure UFW to allow PostgreSQL from ETL server
+      ufw:
+        rule: allow
+        from_ip: "{{ groups['etl_server'][0] }}"
+        to_port: '5432'
+        proto: tcp
+
+  handlers:
+    - name: Restart PostgreSQL
+      systemd:
+        name: postgresql
+        state: restarted
+
+
+- name: Configure ETL Server
+  hosts: etl_server
+  become: true
+  vars_files:
+    - secrets.yml
+  tasks:
+    - name: Wait for cloud-init to complete
+      wait_for:
+        path: /var/lib/cloud/instance/boot-finished
+        timeout: 300
+
+    - name: Update APT cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+
+    - name: Install dependencies
+      apt:
+        name:
+          - python3-venv
+          - python3-pip
+          - postgresql-client-16
+          - git
+          - nginx
+        state: present
+
+    - name: Create application directory
+      file:
+        path: /home/ubuntu/gtfs-app
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    - name: Clone GTFS ETL repository
+      become_user: ubuntu
+      git:
+        repo: '{{ github_repo }}'
+        dest: /home/ubuntu/gtfs-app
+        version: '{{ github_branch }}'
+        force: yes
+
+    - name: Create Python virtual environment
+      become_user: ubuntu
+      command: python3 -m venv /home/ubuntu/prefect-env
+      args:
+        creates: /home/ubuntu/prefect-env/bin/activate
+
+    - name: Upgrade pip in virtual environment
+      become_user: ubuntu
+      command: /home/ubuntu/prefect-env/bin/pip install --upgrade pip
+
+    - name: Install Python requirements
+      become_user: ubuntu
+      command: /home/ubuntu/prefect-env/bin/pip install -r /home/ubuntu/gtfs-app/src/requirements.txt
+
+    - name: Create Prefect server systemd service
+      template:
+        src: prefect-server.service.j2
+        dest: /etc/systemd/system/prefect-server.service
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Create GTFS API systemd service
+      template:
+        src: gtfs-api.service.j2
+        dest: /etc/systemd/system/gtfs-api.service
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Enable and start Prefect server
+      systemd:
+        name: prefect-server
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Enable and start GTFS API
+      systemd:
+        name: gtfs-api
+        enabled: yes
+        state: started
+        daemon_reload: yes
+
+    - name: Create Nginx site configuration
+      template:
+        src: nginx-gtfs.conf.j2
+        dest: /etc/nginx/sites-available/gtfs-dashboard
+        mode: '0644'
+      notify: Restart Nginx
+
+    - name: Enable Nginx site
+      file:
+        src: /etc/nginx/sites-available/gtfs-dashboard
+        dest: /etc/nginx/sites-enabled/gtfs-dashboard
+        state: link
+      notify: Restart Nginx
+
+    - name: Remove default Nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: Restart Nginx
+
+    - name: Create dashboard directory
+      file:
+        path: /var/www/html/gtfs-dashboard
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Copy dashboard files to web root
+      copy:
+        src: /home/ubuntu/gtfs-app/src/dashboard/
+        dest: /var/www/html/gtfs-dashboard/
+        owner: www-data
+        group: www-data
+        mode: '0755'
+        remote_src: yes
+
+    - name: Configure UFW to allow HTTP
+      ufw:
+        rule: allow
+        to_port: '80'
+        proto: tcp
+
+    - name: Configure UFW to allow Prefect UI
+      ufw:
+        rule: allow
+        to_port: '4200'
+        proto: tcp
+
+    - name: Wait for Prefect server to be ready
+      wait_for:
+        port: 4200
+        delay: 5
+        timeout: 60
+
+    - name: Wait for API server to be ready
+      wait_for:
+        port: 8000
+        delay: 5
+        timeout: 60
+
+    - name: Run initial ETL pipeline
+      become_user: ubuntu
+      shell: |
+        cd /home/ubuntu/gtfs-app/src
+        source /home/ubuntu/prefect-env/bin/activate
+        export DB_USER={{ db_app_user }}
+        export DB_PASSWORD={{ db_app_password }}
+        export DB_HOST={{ groups['db_server'][0] }}
+        export DB_PORT=5432
+        export DB_NAME={{ db_app_database }}
+        export DATA_BASE_PATH=/home/ubuntu/gtfs-app/data
+        export ZIP_FILE_NAME=gtfs_data.zip
+        python main_pipeline.py
+      async: 900
+      poll: 10
+      register: pipeline_result
+
+    - name: Display pipeline execution result
+      debug:
+        msg: "Initial ETL pipeline completed successfully"
+      when: pipeline_result.finished == 1
+
+    - name: Setup daily cron job for ETL updates
+      cron:
+        name: "GTFS ETL Daily Update"
+        minute: "0"
+        hour: "6"
+        job: "cd /home/ubuntu/gtfs-app/src && source /home/ubuntu/prefect-env/bin/activate && DB_USER={{ db_app_user }} DB_PASSWORD={{ db_app_password }} DB_HOST={{ groups['db_server'][0] }} DB_PORT=5432 DB_NAME={{ db_app_database }} DATA_BASE_PATH=/home/ubuntu/gtfs-app/data ZIP_FILE_NAME=gtfs_data.zip python check_and_update.py >> /var/log/gtfs-update.log 2>&1"
+        user: ubuntu
+        state: present
+
+  handlers:
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Restart Nginx
+      systemd:
+        name: nginx
+        state: restarted

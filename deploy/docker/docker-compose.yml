@@ -19,8 +19,8 @@ services:
 
   etl:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
     container_name: stcp-etl
     command: ["/app/start.sh", "etl"]
     environment:
@@ -42,8 +42,8 @@ services:
 
   api:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
     container_name: stcp-api
     command: ["/app/start.sh", "api"]
     environment:
@@ -69,8 +69,8 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ../nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ../src/dashboard:/usr/share/nginx/html
+      - ../../nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ../../src/dashboard:/usr/share/nginx/html
     depends_on:
       - api
     networks:
