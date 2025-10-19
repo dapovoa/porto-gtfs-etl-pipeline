@@ -1,4 +1,13 @@
 ---
+- name: Gather facts from all servers
+  hosts: all
+  become: true
+  tasks:
+    - name: Collect network facts
+      setup:
+        gather_subset:
+          - network
+
 - name: Configure Database Server
   hosts: db_server
   become: true
@@ -130,19 +139,37 @@
         sudo -u postgres psql -d {{ db_app_database }} -c "ALTER DEFAULT PRIVILEGES IN SCHEMA analytics GRANT ALL ON SEQUENCES TO {{ db_app_user }};"
       changed_when: false
 
-    - name: Configure pg_hba.conf to allow ETL server connection
+    - name: Configure pg_hba.conf to allow ETL server connection (private IP)
       lineinfile:
         path: /etc/postgresql/16/main/pg_hba.conf
-        line: "host {{ db_app_database }} {{ db_app_user }} {{ groups['etl_server'][0] }}/32 scram-sha-256"
+        line: "host {{ db_app_database }} {{ db_app_user }} {{ hostvars[groups['etl_server'][0]]['ansible_default_ipv4']['address'] }}/32 scram-sha-256"
         backup: yes
       notify: Restart PostgreSQL
 
-    - name: Configure UFW to allow PostgreSQL from ETL server
+    - name: Configure UFW default policies
+      ufw:
+        direction: "{{ item.direction }}"
+        policy: "{{ item.policy }}"
+      loop:
+        - { direction: 'incoming', policy: 'deny' }
+        - { direction: 'outgoing', policy: 'allow' }
+
+    - name: Configure UFW to allow SSH
       ufw:
         rule: allow
-        from_ip: "{{ groups['etl_server'][0] }}"
+        to_port: '22'
+        proto: tcp
+
+    - name: Configure UFW to allow PostgreSQL from ETL server (private IP)
+      ufw:
+        rule: allow
+        from_ip: "{{ hostvars[groups['etl_server'][0]]['ansible_default_ipv4']['address'] }}"
         to_port: '5432'
         proto: tcp
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
 
   handlers:
     - name: Restart PostgreSQL
@@ -276,23 +303,29 @@
         mode: '0755'
         remote_src: yes
 
+    - name: Configure UFW default policies
+      ufw:
+        direction: "{{ item.direction }}"
+        policy: "{{ item.policy }}"
+      loop:
+        - { direction: 'incoming', policy: 'deny' }
+        - { direction: 'outgoing', policy: 'allow' }
+
+    - name: Configure UFW to allow SSH
+      ufw:
+        rule: allow
+        to_port: '22'
+        proto: tcp
+
     - name: Configure UFW to allow HTTP
       ufw:
         rule: allow
         to_port: '80'
         proto: tcp
 
-    - name: Configure UFW to allow Prefect UI
+    - name: Enable UFW
       ufw:
-        rule: allow
-        to_port: '4200'
-        proto: tcp
-
-    - name: Wait for Prefect server to be ready
-      wait_for:
-        port: 4200
-        delay: 5
-        timeout: 60
+        state: enabled
 
     - name: Wait for API server to be ready
       wait_for:
@@ -304,30 +337,30 @@
       become_user: ubuntu
       shell: |
         cd /home/ubuntu/gtfs-app/src
-        source /home/ubuntu/prefect-env/bin/activate
+        . /home/ubuntu/prefect-env/bin/activate
         export DB_USER={{ db_app_user }}
         export DB_PASSWORD={{ db_app_password }}
-        export DB_HOST={{ groups['db_server'][0] }}
+        export DB_HOST={{ hostvars[groups['db_server'][0]]['ansible_default_ipv4']['address'] }}
         export DB_PORT=5432
         export DB_NAME={{ db_app_database }}
         export DATA_BASE_PATH=/home/ubuntu/gtfs-app/data
         export ZIP_FILE_NAME=gtfs_data.zip
-        python main_pipeline.py
-      async: 900
-      poll: 10
-      register: pipeline_result
+        nohup python3 main_pipeline.py > /tmp/etl_pipeline.log 2>&1 &
+        echo $! > /tmp/etl_pipeline.pid
+      args:
+        executable: /bin/bash
+      register: pipeline_start
 
-    - name: Display pipeline execution result
+    - name: Display pipeline start message
       debug:
-        msg: "Initial ETL pipeline completed successfully"
-      when: pipeline_result.finished == 1
+        msg: "ETL pipeline started in background. Check logs at /tmp/etl_pipeline.log"
 
     - name: Setup daily cron job for ETL updates
       cron:
         name: "GTFS ETL Daily Update"
         minute: "0"
         hour: "6"
-        job: "cd /home/ubuntu/gtfs-app/src && source /home/ubuntu/prefect-env/bin/activate && DB_USER={{ db_app_user }} DB_PASSWORD={{ db_app_password }} DB_HOST={{ groups['db_server'][0] }} DB_PORT=5432 DB_NAME={{ db_app_database }} DATA_BASE_PATH=/home/ubuntu/gtfs-app/data ZIP_FILE_NAME=gtfs_data.zip python check_and_update.py >> /var/log/gtfs-update.log 2>&1"
+        job: "cd /home/ubuntu/gtfs-app/src && . /home/ubuntu/prefect-env/bin/activate && DB_USER={{ db_app_user }} DB_PASSWORD={{ db_app_password }} DB_HOST={{ hostvars[groups['db_server'][0]]['ansible_default_ipv4']['address'] }} DB_PORT=5432 DB_NAME={{ db_app_database }} DATA_BASE_PATH=/home/ubuntu/gtfs-app/data ZIP_FILE_NAME=gtfs_data.zip python3 check_and_update.py >> /var/log/gtfs-update.log 2>&1"
         user: ubuntu
         state: present
 

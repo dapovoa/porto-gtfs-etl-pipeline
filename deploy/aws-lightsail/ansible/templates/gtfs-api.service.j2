@@ -10,7 +10,7 @@ WorkingDirectory=/home/ubuntu/gtfs-app/src
 Environment=PATH=/home/ubuntu/prefect-env/bin
 Environment=DB_USER={{ db_app_user }}
 Environment=DB_PASSWORD={{ db_app_password }}
-Environment=DB_HOST={{ groups['db_server'][0] }}
+Environment=DB_HOST={{ hostvars[groups['db_server'][0]]['ansible_default_ipv4']['address'] }}
 Environment=DB_PORT=5432
 Environment=DB_NAME={{ db_app_database }}
 Environment=DATA_BASE_PATH=/home/ubuntu/gtfs-app/data

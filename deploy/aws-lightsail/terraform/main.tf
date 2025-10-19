@@ -48,45 +48,36 @@ resource "aws_lightsail_key_pair" "main" {
   public_key = file(pathexpand(var.ssh_public_key_path))
 }
 
-# ETL Server - Micro plan ($7/month: 1GB RAM, 2vCPU, 40GB SSD)
+# ETL Server - Small plan ($12/month: 2GB RAM, 2vCPU, 60GB SSD)
 resource "aws_lightsail_instance" "etl_server" {
   name              = "${var.project_name}-etl-server"
   availability_zone = var.availability_zone
   blueprint_id      = "ubuntu_24_04"
-  bundle_id         = "micro_2_0"
+  bundle_id         = "small_3_0"
   key_pair_name     = aws_lightsail_key_pair.main.name
 
   user_data = <<-EOT
     #!/bin/bash
-    sleep 20
+    # Wait for cloud-init to stabilize
+    sleep 30
 
     # System updates
     apt-get update
-    apt-get upgrade -y
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 
-    # Firewall configuration
-    ufw default deny incoming
-    ufw default allow outgoing
-    ufw allow ssh
-    ufw --force enable
-
-    # Remove snapd
+    # Remove snapd to save resources
     systemctl stop snapd
     apt-get purge snapd -y
     rm -rf /var/cache/snapd/
 
-    # SSH hardening
-    sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config
-    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-    sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-    systemctl restart sshd
-
-    # Security tools
-    apt-get install -y curl wget unzip fail2ban
+    # Basic security tools
+    apt-get install -y curl wget unzip python3 python3-pip
 
     # Set hostname
     hostnamectl set-hostname etl-server
+
+    # Signal completion
+    touch /var/lib/cloud/instance/user-data-finished
   EOT
 
   tags = {
@@ -100,40 +91,31 @@ resource "aws_lightsail_instance" "db_server" {
   name              = "${var.project_name}-db-server"
   availability_zone = var.availability_zone
   blueprint_id      = "ubuntu_24_04"
-  bundle_id         = "small_2_0"
+  bundle_id         = "small_3_0"
   key_pair_name     = aws_lightsail_key_pair.main.name
 
   user_data = <<-EOT
     #!/bin/bash
-    sleep 20
+    # Wait for cloud-init to stabilize
+    sleep 30
 
     # System updates
     apt-get update
-    apt-get upgrade -y
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 
-    # Firewall configuration
-    ufw default deny incoming
-    ufw default allow outgoing
-    ufw allow ssh
-    ufw --force enable
-
-    # Remove snapd
+    # Remove snapd to save resources
     systemctl stop snapd
     apt-get purge snapd -y
     rm -rf /var/cache/snapd/
 
-    # SSH hardening
-    sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config
-    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-    sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-    systemctl restart sshd
-
-    # Security tools
-    apt-get install -y curl wget unzip fail2ban
+    # Basic security tools
+    apt-get install -y curl wget unzip python3 python3-pip
 
     # Set hostname
     hostnamectl set-hostname db-server
+
+    # Signal completion
+    touch /var/lib/cloud/instance/user-data-finished
   EOT
 
   tags = {
