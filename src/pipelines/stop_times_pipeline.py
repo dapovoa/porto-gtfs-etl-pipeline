@@ -44,22 +44,29 @@ def transform_stop_times_data(df: pd.DataFrame) -> pd.DataFrame:
 def load_stop_times_to_postgres(df: pd.DataFrame) -> int:
     logger = get_run_logger()
     engine = create_engine(DATABASE_URL)
-    
+
     with engine.connect() as conn:
         conn.execute(text("DELETE FROM raw.stop_times"))
         conn.commit()
 
-    df.to_sql(
-        name='stop_times',
-        con=engine,
-        schema='raw',
-        if_exists='append',
-        index=False,
-        method='multi'
-    )
-    
-    logger.info(f"Inserted {len(df)} records into raw.stop_times table")
-    return len(df)
+    # Insert in batches to avoid memory issues with large datasets
+    batch_size = 50000
+    total_records = len(df)
+
+    for i in range(0, total_records, batch_size):
+        batch = df.iloc[i:i+batch_size]
+        batch.to_sql(
+            name='stop_times',
+            con=engine,
+            schema='raw',
+            if_exists='append',
+            index=False,
+            method='multi'
+        )
+        logger.info(f"Inserted batch {i//batch_size + 1}: {len(batch)} records ({i+len(batch)}/{total_records})")
+
+    logger.info(f"Inserted {total_records} records into raw.stop_times table")
+    return total_records
 
 @flow(name="STCP GTFS Stop Times Pipeline")
 def stop_times_etl_pipeline(data_path: str):
