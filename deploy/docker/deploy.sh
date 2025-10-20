@@ -1,5 +1,4 @@
 #!/bin/bash
-# One-click deployment script for STCP GTFS ETL Pipeline with Docker
 
 set -e
 

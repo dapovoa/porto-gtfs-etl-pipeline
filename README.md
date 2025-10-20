@@ -1,4 +1,4 @@
-# GTFS ETL Pipeline
+# Porto GTFS ETL Pipeline
 
 ![Dashboard Screenshot](img/screenshot.png)
 
@@ -33,8 +33,8 @@ To build this, we used a set of well-known technologies:
 The easiest way to get this running is with Docker.
 
 ```bash
-git clone https://github.com/dapovoa/github/gtfs-etl-pipeline
-cd gtfs-etl-pipeline
+git clone https://github.com/dapovoa/porto-gtfs-etl-pipeline
+cd porto-gtfs-etl-pipeline
 ./deploy/docker/deploy.sh
 ```
 
@@ -55,7 +55,7 @@ The project was designed to be flexible when it comes to deployment:
 The file organization follows a logic of separation of concerns:
 
 ```
-gtfs-etl-pipeline/
+porto-gtfs-etl-pipeline/
   src/                # The application's source code
     main_pipeline.py  # The main ETL orchestrator
     api_server.py     # The API server
