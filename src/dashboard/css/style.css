@@ -296,7 +296,7 @@ body::before {
 .content-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: 1.2fr 1fr 1fr;
+    grid-template-columns: 2fr 1fr 1fr;
     grid-template-rows: repeat(3, 1fr);
     gap: 1rem;
     min-height: 0;

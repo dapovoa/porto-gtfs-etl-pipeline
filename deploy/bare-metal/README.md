@@ -1,4 +1,4 @@
-# Bare Metal Installation Guide
+# Bare Metal Installation Guide [![Linux](https://img.shields.io/badge/Linux-Ubuntu-E95420?logo=ubuntu)](https://ubuntu.com/) [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql)](https://www.postgresql.org/) [![Python](https://img.shields.io/badge/Python-3-3776AB?logo=python)](https://www.python.org/) [![Nginx](https://img.shields.io/badge/Nginx-server-009639?logo=nginx)](https://nginx.org/)
 
 This guide is for those who prefer to set up the project manually on their own Linux servers. It provides more control but requires more hands-on configuration.
 

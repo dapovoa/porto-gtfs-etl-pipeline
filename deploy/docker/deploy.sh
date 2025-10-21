@@ -4,26 +4,22 @@ set -e
 
 echo "Starting STCP GTFS ETL Pipeline with Docker..."
 
-# Check if Docker is installed
 if ! [ -x "$(command -v docker)" ]; then
   echo "Error: Docker is not installed." >&2
   exit 1
 fi
 
-# Check if docker-compose is installed (modern Docker includes 'compose' as a subcommand)
 if ! [ -x "$(command -v docker-compose)" ] && ! [ -x "$(command -v docker compose 2>/dev/null)" ]; then
   echo "Error: neither docker-compose nor docker compose is available." >&2
   exit 1
 fi
 
-# Determine which docker-compose command to use
 if [ -x "$(command -v docker compose)" ]; then
   COMPOSE_CMD="docker compose"
 else
   COMPOSE_CMD="docker-compose"
 fi
 
-# Set default values for all variables
 export DB_USER=${DB_USER:-etl_user}
 export DB_NAME=${DB_NAME:-stcp_warehouse}
 export DB_PASSWORD=${DB_PASSWORD:-DbServer123}
@@ -34,7 +30,6 @@ echo "  DB_NAME: $DB_NAME"
 echo "  DB_PASSWORD: ${DB_PASSWORD:0:3}*** (${#DB_PASSWORD} chars)"
 echo ""
 
-# Navigate to the project root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../.."
 

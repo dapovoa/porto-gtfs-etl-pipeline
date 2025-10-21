@@ -1,4 +1,4 @@
-# Docker Deployment
+# Docker Deployment [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://www.docker.com/) [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql)](https://www.postgresql.org/) [![Nginx](https://img.shields.io/badge/Nginx-alpine-009639?logo=nginx)](https://nginx.org/)
 
 This is the quickest and easiest way to get the entire project running on your local machine. It uses Docker to manage all the services.
 

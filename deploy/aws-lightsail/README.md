@@ -1,4 +1,4 @@
-# AWS Lightsail Deployment
+# AWS Lightsail Deployment [![AWS](https://img.shields.io/badge/AWS-Lightsail-FF9900?logo=amazonaws)](https://aws.amazon.com/lightsail/) [![Terraform](https://img.shields.io/badge/Terraform-IaC-7B42BC?logo=terraform)](https://www.terraform.io/) [![Ansible](https://img.shields.io/badge/Ansible-Automation-EE0000?logo=ansible)](https://www.ansible.com/)
 
 This is the production-ready deployment option, using Terraform and Ansible to automatically set up the entire infrastructure on AWS Lightsail.
 
