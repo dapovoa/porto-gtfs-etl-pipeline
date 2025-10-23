@@ -25,14 +25,39 @@ It's always a good idea to start with some basic security measures.
 # Update all packages
 sudo apt update -y && sudo apt upgrade -y
 
-# Configure the firewall to allow SSH and deny other incoming traffic
+# Install ufw and fail2ban
+sudo apt install -y ufw fail2ban
+
+# Configure the firewall to allow SSH and PostgreSQL from ETL server
 sudo ufw allow openssh
+sudo ufw allow from <etl-server-ip> to any port 5432 proto tcp
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw --force enable
 
-# Install fail2ban to protect against brute-force attacks
-sudo apt install -y fail2ban
+# Configure fail2ban for SSH protection
+sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
+sudo nano /etc/fail2ban/jail.local
+```
+
+Add or modify the following configuration:
+
+```ini
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1 <etl-server-ip>
+bantime = 3600
+findtime = 600
+maxretry = 5
+
+[sshd]
+enabled = true
+```
+
+Save the file and restart fail2ban:
+
+```bash
+sudo systemctl restart fail2ban
+sudo systemctl enable fail2ban
 
 # Disable password-based SSH authentication (optional, but recommended)
 # Edit /etc/ssh/sshd_config and set PasswordAuthentication to "no"
@@ -135,9 +160,12 @@ Just like the DB server, we'll start with some basic security.
 # Update all packages
 sudo apt update -y && sudo apt upgrade -y
 
+# Install ufw
+sudo apt install -y ufw
+
 # Configure the firewall
 sudo ufw allow openssh
-sudo ufw allow 'Nginx Full' # Allow HTTP and HTTPS traffic
+sudo ufw allow 'Nginx Full'
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw --force enable
@@ -148,7 +176,7 @@ sudo ufw --force enable
 Install Python, Git, and the PostgreSQL client tools.
 
 ```bash
-sudo apt install -y python3-venv python3-pip git postgresql-client-16
+sudo apt install -y python3-venv python3-pip git postgresql-client-16 nano
 ```
 
 ### 2.3. Set Up the Project
@@ -248,7 +276,10 @@ We'll use Nginx as a reverse proxy to serve the dashboard and the API.
 
     ```bash
     # Copy the dashboard files to the web root
+    sudo mkdir -p /var/www
     sudo cp -r ~/gtfs-app/src/dashboard /var/www/gtfs-dashboard
+    sudo chown -R www-data:www-data /var/www/gtfs-dashboard
+    sudo chmod -R 755 /var/www/gtfs-dashboard
 
     # Enable the new configuration
     sudo ln -s /etc/nginx/sites-available/gtfs-dashboard /etc/nginx/sites-enabled/
@@ -285,6 +316,7 @@ User=<your-username>
 Group=<your-username>
 WorkingDirectory=/home/<your-username>/gtfs-app/src
 Environment="PATH=/home/<your-username>/python-env/bin"
+EnvironmentFile=/home/<your-username>/gtfs-app/src/.env
 ExecStart=/home/<your-username>/python-env/bin/uvicorn api_server:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
@@ -314,6 +346,7 @@ User=<your-username>
 Group=<your-username>
 WorkingDirectory=/home/<your-username>/gtfs-app/src
 Environment="PATH=/home/<your-username>/python-env/bin"
+EnvironmentFile=/home/<your-username>/gtfs-app/src/.env
 ExecStart=/home/<your-username>/python-env/bin/prefect server start --host <your-etl-server-ip> --port 4200
 Restart=always
 RestartSec=10
@@ -339,6 +372,10 @@ sudo systemctl status prefect-server.service
 Finally, set up a cron job to run the update script every day.
 
 ```bash
+# Create log directory with proper permissions
+sudo mkdir -p /var/log/gtfs
+sudo chown <your-username>:<your-username> /var/log/gtfs
+
 # Open the crontab editor
 EDITOR=nano crontab -e
 ```
@@ -346,5 +383,5 @@ EDITOR=nano crontab -e
 Add this line to run the script every day at 6 AM.
 
 ```cron
-0 6 * * * cd /home/<your-username>/gtfs-app/src && /home/<your-username>/python-env/bin/python check_and_update.py >> /var/log/gtfs-update.log 2>&1
+0 6 * * * cd /home/<your-username>/gtfs-app/src && /home/<your-username>/python-env/bin/python check_and_update.py >> /var/log/gtfs/update.log 2>&1
 ```
