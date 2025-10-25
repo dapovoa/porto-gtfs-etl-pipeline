@@ -13,20 +13,59 @@ curl "https://broker.fiware.urbanplatform.portodigital.pt/v2/entities?q=vehicleT
 ```
 
 ```json
-{
-  "vehicle": "3349",
-  "route": "stcp:route:804",
-  "location": [-8.57053566, 41.166854858],
-  "speed": 0,
-  "bearing": 186,
-  "time": "2025-10-25T10:37:00.00Z"
-}
+[
+  {
+    "id": "urn:ngsi-ld:Vehicle:porto:stcp:bus:3373",
+    "type": "Vehicle",
+    "annotations": {
+      "type": "Array",
+      "value": [
+        "stcp:route:302",
+        "stcp:nr_turno:na",
+        "stcp:nr_viagem:302_0_3|161|D2|T1|N12",
+        "stcp:sentido:0"
+      ],
+      "metadata": {}
+    },
+    "bearing": {
+      "type": "Number", 
+      "value": 198,
+      "metadata": {}
+    },
+    "location": {
+      "type": "geo:json",
+      "value": {
+        "type": "Point",
+        "coordinates": [
+          -8.601851463,
+          41.157554626
+        ]
+      },
+      "metadata": {}
+    },
+    "observationDateTime": {
+      "type": "DateTime",
+      "value": "2025-10-25T12:28:58.00Z", 
+      "metadata": {}
+    },
+    "speed": {
+      "type": "Number",
+      "value": 34,
+      "metadata": {}
+    },
+    "vehicleType": {
+      "type": "Text",
+      "value": "bus", 
+      "metadata": {}
+    }
+  }
+]
 ```
 
 That's it. One GPS point. No path. No history. No context.
 
 **Update method:** HTTP polling every 5 seconds
-**Data provided:** Current position, current speed, current bearing
+**Data provided:** Current position, current speed, current bearing (and other metadata)
 **Data NOT provided:** Everything else
 
 ## Real Test Results
@@ -64,7 +103,7 @@ The bus moved 150 meters somewhere between t=0 and t=10. When? Which path? No id
 - Bus could have done anything in those 5 seconds
 
 **No real-time context**
-- API: Route ID only
+- API: Route ID available in annotations array only
 - No traffic conditions, no roadworks, no detours
 - No reason for deviations
 
@@ -151,12 +190,12 @@ Note `route_deviation` and `schedule_deviation` - context about bus behavior.
 
 ```
 FIWARE gives:           What's needed:
-- GPS point             - GPS stream (sub-second updates)
+- GPS point (NGSI-LD)   - GPS stream (sub-second updates)
 - Speed                 - Acceleration/deceleration
 - Bearing               - Turn angles
 - Timestamp             - Path history (breadcrumbs)
-- Route ID              - Next stops with timing
-                        - Route deviation info
+- Route ID (in annotations) - Next stops with timing
+- Additional metadata   - Route deviation info
                         - Schedule adherence
                         - Traffic context
 ```
